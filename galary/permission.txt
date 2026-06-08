@@ -1,0 +1,31 @@
+import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:saf_stream/saf_stream.dart';
+
+class StatusPermissionHelper {
+  static const String _tree = "content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia%2F.Statuses";
+  final _plugin = SafStream();
+
+  Future<bool> requestStatusAccessWorkflow() async {
+    if (!Platform.isAndroid) return false;
+    
+    final info = await DeviceInfoPlugin().androidInfo;
+    if (info.version.sdkInt >= 30) {
+      try {
+        // ✅ Corrected for v2.0.0: isPermissionGranted
+        bool hasAccess = await _plugin.isPermissionGranted(_tree) ?? false;
+        if (!hasAccess) {
+          // ✅ Corrected for v2.0.0: openDocumentTree
+          String? selected = await _plugin.openDocumentTree(initialUri: _tree);
+          return selected != null;
+        }
+        return true;
+      } catch (e) {
+        return false;
+      }
+    } else {
+      return (await Permission.storage.request()).isGranted;
+    }
+  }
+}
