@@ -1,527 +1,851 @@
-// lib/main.dart
 import 'dart:io';
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:path_provider/path_provider.dart';
+
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
+
 import 'package:saf/saf.dart';
+
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail_plus/video_thumbnail_plus.dart';
+
 import 'package:gallery_saver_plus/gallery_saver.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:path/path.dart' as p;
-import 'package:shimmer/shimmer.dart';
+
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-class SafHelper {
-  static const String whatsappKey = "whatsapp_status_uri";
-  static const String businessKey = "business_status_uri";
+import 'package:shimmer/shimmer.dart';
 
-  static Future<String?> getPersistedUri(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(key);
-  }
-
-  static Future<void> persistUri(String key, String uri) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, uri);
-  }
-}
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await MobileAds.instance.initialize();
+
   runApp(const MyApp());
 }
 
+class AppConfig {
+  static const String appName = 'WA Status Fast Saver';
+
+  static const String bannerAdUnitId = 'ca-app-pub-8147663138065818/2224393560';
+
+  static const String contentChannel =
+      'com.bravesstudio.wastatusfastsaver/content_reader';
+
+  static const String whatsappFolder =
+      'Android/media/com.whatsapp/WhatsApp/Media/.Statuses';
+
+  static const String businessFolder =
+      'Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses';
+
+  static const String waPermission = 'wa_permission';
+
+  static const String wbPermission = 'wb_permission';
+}
+
+class StatusItem {
+  final String path;
+
+  final bool isVideo;
+
+  String? thumbnailPath;
+
+  StatusItem({
+    required this.path,
+    required this.isVideo,
+    this.thumbnailPath,
+  });
+}
+
+class NativeContentReader {
+  static const MethodChannel _channel = MethodChannel(
+    AppConfig.contentChannel,
+  );
+
+  static Future<String?> copyToTemp(
+    String uri,
+  ) async {
+    try {
+      return await _channel.invokeMethod<String>(
+        'readContentUriToFile',
+        {
+          'uri': uri,
+        },
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({
+    super.key,
+  });
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'WA Status Fast Saver',
+      title: AppConfig.appName,
       theme: ThemeData(
-        primarySwatch: Colors.green,
-        scaffoldBackgroundColor: const Color(0xFFF5F5F5),
+        useMaterial3: true,
+        colorSchemeSeed: Colors.green,
       ),
-      home: const StatusScreen(),
+      home: const StatusHomePage(),
     );
   }
 }
-class StatusScreen extends StatefulWidget {
-  const StatusScreen({super.key});
-  @override
-  State<StatusScreen> createState() => _StatusScreenState();
+
+class PermissionService {
+  static Future<bool> requestMediaPermission() async {
+    final info = await DeviceInfoPlugin().androidInfo;
+
+    if (info.version.sdkInt >= 33) {
+      final photos = await Permission.photos.request();
+
+      final videos = await Permission.videos.request();
+
+      return photos.isGranted || videos.isGranted;
+    }
+
+    final storage = await Permission.storage.request();
+
+    return storage.isGranted;
+  }
 }
 
-class _StatusScreenState extends State<StatusScreen>
-    with SingleTickerProviderStateMixin {
-  // Platform channel name must match MainActivity.kt
-  static const MethodChannel _contentReaderChannel =
-      MethodChannel('com.bravesstudio.wastatusfastsaver/content_reader');
+class SafService {
+  static final Saf whatsapp = Saf(
+    AppConfig.whatsappFolder,
+  );
 
+  static final Saf business = Saf(
+    AppConfig.businessFolder,
+  );
+}
+
+class PermissionStorage {
+  static Future<bool> hasWhatsAppPermission() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.getBool(
+          AppConfig.waPermission,
+        ) ??
+        false;
+  }
+
+  static Future<bool> hasBusinessPermission() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.getBool(
+          AppConfig.wbPermission,
+        ) ??
+        false;
+  }
+
+  static Future<void> setWhatsAppPermission(
+    bool value,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setBool(
+      AppConfig.waPermission,
+      value,
+    );
+  }
+
+  static Future<void> setBusinessPermission(
+    bool value,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setBool(
+      AppConfig.wbPermission,
+      value,
+    );
+  }
+}
+
+extension SafPermissionExtension on SafService {
+  static Future<bool> requestWhatsAppPermission() async {
+    try {
+      final granted = await SafService.whatsapp.getDirectoryPermission(
+        isDynamic: false,
+        grantWritePermission: false,
+      );
+
+      if (granted == true) {
+        await PermissionStorage.setWhatsAppPermission(
+          true,
+        );
+
+        return true;
+      }
+
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> requestBusinessPermission() async {
+    try {
+      final granted = await SafService.business.getDirectoryPermission(
+        isDynamic: false,
+        grantWritePermission: false,
+      );
+
+      if (granted == true) {
+        await PermissionStorage.setBusinessPermission(
+          true,
+        );
+
+        return true;
+      }
+
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
+class ThumbnailService {
+  static Future<String?> createThumbnail(
+    String path,
+    bool isVideo,
+  ) async {
+    try {
+      if (!isVideo) {
+        return path;
+      }
+
+      final tempDir = await getTemporaryDirectory();
+
+      return await VideoThumbnailPlus.thumbnailFile(
+        video: path,
+        thumbnailPath: tempDir.path,
+        imageFormat: ImageFormat.JPEG,
+        quality: 90,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+class StatusLoader {
+  static bool isImage(
+    String file,
+  ) {
+    final lower = file.toLowerCase();
+
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp');
+  }
+
+  static bool isVideo(
+    String file,
+  ) {
+    final lower = file.toLowerCase();
+
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.3gp') ||
+        lower.endsWith('.mkv');
+  }
+
+  static Future<List<StatusItem>> loadStatuses(
+    Saf saf,
+  ) async {
+    try {
+      await saf.cache();
+
+      final files = await saf.getCachedFilesPath();
+
+      debugPrint(
+        'FILES FOUND: ${files?.length}',
+      );
+
+      debugPrint(
+        'FILES LIST: $files',
+      );
+
+      if (files == null || files.isEmpty) {
+        return [];
+      }
+
+      final items = <StatusItem>[];
+
+      for (final file in files) {
+        if (isImage(file)) {
+          items.add(
+            StatusItem(
+              path: file,
+              isVideo: false,
+            ),
+          );
+        }
+
+        if (isVideo(file)) {
+          items.add(
+            StatusItem(
+              path: file,
+              isVideo: true,
+            ),
+          );
+        }
+      }
+
+      for (final item in items) {
+        item.thumbnailPath = await ThumbnailService.createThumbnail(
+          item.path,
+          item.isVideo,
+        );
+      }
+
+      items.sort(
+        (a, b) => b.path.compareTo(
+          a.path,
+        ),
+      );
+
+      return items;
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+class StatusHomePage extends StatefulWidget {
+  const StatusHomePage({
+    super.key,
+  });
+
+  @override
+  State<StatusHomePage> createState() => _StatusHomePageState();
+}
+
+class _StatusHomePageState extends State<StatusHomePage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<String> generalFiles = [];
-  List<String> businessFiles = [];
-  Map<String, String> videoThumbnails = {}; // uri -> temp thumbnail path
-  Map<String, String> tempCache = {}; // uri -> temp file path
-  bool isLoading = false;
-  BannerAd? bannerAd;
-  bool adLoaded = false;
-  final String whatsappUri = "content://com.whatsapp.provider.statuses";
-  final String businessUri = "content://com.whatsapp.w4b.provider.statuses";
+
+  BannerAd? _bannerAd;
+
+  bool _bannerLoaded = false;
+
+  bool _loading = true;
+
+  List<StatusItem> whatsappStatuses = [];
+
+  List<StatusItem> businessStatuses = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    loadBanner();
-    loadStatuses();
+
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+    );
+
+    _loadBanner();
+
+    _startup();
   }
 
   @override
   void dispose() {
+    _bannerAd?.dispose();
+
     _tabController.dispose();
-    bannerAd?.dispose();
+
     super.dispose();
   }
-  void loadBanner() {
-    bannerAd = BannerAd(
+
+  void _loadBanner() {
+    _bannerAd = BannerAd(
       size: AdSize.banner,
-      adUnitId: Platform.isAndroid ? 'ca-app-pub-3940256099942544/6300978111' : '',
+      adUnitId: AppConfig.bannerAdUnitId,
       listener: BannerAdListener(
-        onAdLoaded: (_) => setState(() => adLoaded = true),
-        onAdFailedToLoad: (ad, error) => ad.dispose(),
+        onAdLoaded: (_) {
+          if (!mounted) {
+            return;
+          }
+
+          setState(() {
+            _bannerLoaded = true;
+          });
+        },
       ),
       request: const AdRequest(),
-    )..load();
+    );
+
+    _bannerAd!.load();
   }
 
-  Future<String?> _readContentUriViaPlatform(String uri) async {
-    try {
-      final String? tempPath =
-          await _contentReaderChannel.invokeMethod('readContentUriToFile', {'uri': uri});
-      return tempPath;
-    } catch (e) {
-      debugPrint('Platform readContentUriToFile failed: $e');
-      return null;
+  Future<void> _startup() async {
+    await PermissionService.requestMediaPermission();
+
+    await _ensurePermissions();
+
+    await _loadStatuses();
+  }
+
+  Future<void> _ensurePermissions() async {
+    final waGranted = await PermissionStorage.hasWhatsAppPermission();
+
+    final wbGranted = await PermissionStorage.hasBusinessPermission();
+
+    if (!waGranted) {
+      await SafPermissionExtension.requestWhatsAppPermission();
+    }
+
+    if (!wbGranted) {
+      await SafPermissionExtension.requestBusinessPermission();
     }
   }
-  // Copies a content URI to a temporary file and returns the temp file path.
-  // This implementation uses the Android platform channel fallback exclusively
-  // for reading content:// URIs to avoid compile-time SAF API mismatches.
-  Future<String?> copyUriToTempFile(String uri) async {
-    try {
-      if (tempCache.containsKey(uri)) {
-        final cached = tempCache[uri]!;
-        if (await File(cached).exists()) return cached;
-        tempCache.remove(uri);
-      }
 
-      // Use platform channel to read content URI into a temp file on Android
-      final platformPath = await _readContentUriViaPlatform(uri);
-      if (platformPath != null && platformPath.isNotEmpty) {
-        tempCache[uri] = platformPath;
-        return platformPath;
-      }
-
-      debugPrint('copyUriToTempFile: platform channel failed for $uri');
-      return null;
-    } catch (e, st) {
-      debugPrint('copyUriToTempFile error: $e\n$st');
-      return null;
+  Future<void> _loadStatuses() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+      });
     }
-  }
-  Future<void> generateAllThumbnails(List<String> files) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      const chunkSize = 6;
-      for (var i = 0; i < files.length; i += chunkSize) {
-        final chunk = files.skip(i).take(chunkSize).toList();
-        await Future.wait(chunk.map((uri) async {
-          if (uri.endsWith('.mp4') && !videoThumbnails.containsKey(uri)) {
-            final tempPath = await copyUriToTempFile(uri);
-            if (tempPath != null) {
-              final thumb = await VideoThumbnailPlus.thumbnailFile(
-                video: tempPath,
-                thumbnailPath: tempDir.path,
-                imageFormat: ImageFormat.JPEG,
-                quality: 80,
-                maxWidth: 600,
-              );
-              if (thumb != null) videoThumbnails[uri] = thumb;
-            }
-          } else if (!uri.endsWith('.mp4') && !videoThumbnails.containsKey(uri)) {
-            final tempPath = await copyUriToTempFile(uri);
-            if (tempPath != null) videoThumbnails[uri] = tempPath;
-          }
-        }));
-      }
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('generateAllThumbnails error: $e');
+
+    final wa = await StatusLoader.loadStatuses(
+      SafService.whatsapp,
+    );
+
+    final wb = await StatusLoader.loadStatuses(
+      SafService.business,
+    );
+
+    if (!mounted) {
+      return;
     }
+
+    setState(() {
+      whatsappStatuses = wa;
+
+      businessStatuses = wb;
+
+      _loading = false;
+    });
   }
-  Future<void> loadStatuses() async {
-    setState(() => isLoading = true);
-    try {
-      final info = await DeviceInfoPlugin().androidInfo;
-      if (info.version.sdkInt >= 30) {
-        generalFiles = await loadSafFiles(whatsappUri, SafHelper.whatsappKey);
-        businessFiles = await loadSafFiles(businessUri, SafHelper.businessKey);
-      } else {
-        final status = await Permission.storage.request();
-        if (status.isGranted) {
-          generalFiles = await loadSafFiles(whatsappUri, SafHelper.whatsappKey);
-          businessFiles = await loadSafFiles(businessUri, SafHelper.businessKey);
-        } else {
-          generalFiles = [];
-          businessFiles = [];
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Storage permission required on this device')),
-            );
-          }
-        }
-      }
-      await generateAllThumbnails([...generalFiles, ...businessFiles]);
-    } catch (e, st) {
-      debugPrint('loadStatuses error: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load statuses: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => isLoading = false);
-    }
+
+  Future<void> _refresh() async {
+    await _loadStatuses();
   }
-  // loadSafFiles: use persisted tree URI or defaultUri and request directory permission.
-  // Do not call SAF methods that are not present in the installed package.
-  Future<List<String>> loadSafFiles(String defaultUri, String key) async {
-    try {
-      final prefsUri = await SafHelper.getPersistedUri(key);
-      debugPrint('SAF: persistedUri from prefs = $prefsUri');
 
-      String? treeUri = prefsUri ?? defaultUri;
-
-      final saf = Saf(treeUri);
-      final permission = await saf.getDirectoryPermission(isDynamic: true);
-      debugPrint('SAF: getDirectoryPermission for $treeUri => $permission');
-
-      if (permission == true) {
-        final files = await saf.getFilesPath();
-        debugPrint('SAF: files returned count = ${files?.length ?? 0}');
-        debugPrint('SAF: sample files = ${files?.take(5).toList()}');
-        if (files != null && files.isNotEmpty) {
-          return files.where((file) =>
-              file.endsWith('.jpg') ||
-              file.endsWith('.jpeg') ||
-              file.endsWith('.png') ||
-              file.endsWith('.mp4')).toList();
-        } else {
-          debugPrint('SAF: no files found in treeUri');
-          return [];
-        }
-      } else {
-        debugPrint('SAF: permission denied for $treeUri');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Folder access required to read statuses. Please pick the folder.')),
-          );
-        }
-        return [];
-      }
-    } catch (e, st) {
-      debugPrint('SAF ERROR: $e\n$st');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Storage access failed: $e')),
-        );
-      }
-      return [];
-    }
-  }
-  Future<void> saveStatus(String uri) async {
-    try {
-      final tempPath = await copyUriToTempFile(uri);
-      if (tempPath == null) throw Exception('Unable to read status');
-
-      final file = File(tempPath);
-      final isVideo = file.path.endsWith('.mp4');
-
-      final targetDir = Directory(
-        isVideo ? '/storage/emulated/0/Movies/StatusSaver' : '/storage/emulated/0/Pictures/StatusSaver'
-      );
-
-      if (!await targetDir.exists()) await targetDir.create(recursive: true);
-
-      final ext = p.extension(tempPath).isNotEmpty ? p.extension(tempPath) : (isVideo ? '.mp4' : '.jpg');
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}$ext';
-      final savedPath = '${targetDir.path}/$fileName';
-      final savedFile = await file.copy(savedPath);
-
-      if (isVideo) await GallerySaver.saveVideo(savedFile.path);
-      else await GallerySaver.saveImage(savedFile.path);
-
-      try {
-        await File(tempPath).delete();
-        tempCache.remove(uri);
-      } catch (e) {
-        debugPrint('Failed to delete temp file: $e');
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved Successfully'), backgroundColor: Colors.green),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save failed: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-  Widget buildGrid(List<String> files) {
-    if (files.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Text(
-            'No statuses found.\n\nOpen WhatsApp and watch statuses first.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-          ),
+  @override
+  Widget build(
+    BuildContext context,
+  ) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'WA Status Fast Saver',
         ),
-      );
+        centerTitle: true,
+        actions: [
+          IconButton(
+            onPressed: _refresh,
+            icon: const Icon(
+              Icons.refresh,
+            ),
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(
+              icon: Icon(
+                Icons.chat,
+              ),
+              text: 'WhatsApp',
+            ),
+            Tab(
+              icon: Icon(
+                Icons.business,
+              ),
+              text: 'Business',
+            ),
+          ],
+        ),
+      ),
+      body: Column(
+        children: [
+          if (_bannerLoaded && _bannerAd != null)
+            SizedBox(
+              width: _bannerAd!.size.width.toDouble(),
+              height: _bannerAd!.size.height.toDouble(),
+              child: AdWidget(
+                ad: _bannerAd!,
+              ),
+            ),
+          Expanded(
+            child: _loading
+                ? _buildLoading()
+                : TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildStatusGrid(
+                        whatsappStatuses,
+                      ),
+                      _buildStatusGrid(
+                        businessStatuses,
+                      ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoading() {
+    return MasonryGridView.count(
+      crossAxisCount: 2,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      padding: const EdgeInsets.all(
+        12,
+      ),
+      itemCount: 10,
+      itemBuilder: (context, index) {
+        return Shimmer.fromColors(
+          baseColor: Colors.grey.shade300,
+          highlightColor: Colors.grey.shade100,
+          child: Container(
+            height: 180,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(
+                16,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusGrid(
+    List<StatusItem> items,
+  ) {
+    if (items.isEmpty) {
+      return _buildEmptyState();
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(10),
+    return RefreshIndicator(
+      onRefresh: _refresh,
       child: MasonryGridView.count(
         crossAxisCount: 2,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        itemCount: files.length,
+        padding: const EdgeInsets.all(
+          12,
+        ),
+        itemCount: items.length,
         itemBuilder: (context, index) {
-          final uri = files[index];
-          final isVideo = uri.endsWith('.mp4');
-          final thumbPath = videoThumbnails[uri];
-          return TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.95, end: 1.0),
-            duration: const Duration(milliseconds: 420),
-            builder: (context, scale, child) {
-              return Transform.scale(
-                scale: scale,
-                child: child,
-              );
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.6),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12)],
-              ),
-              child: Column(
-                children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                    child: Hero(
-                      tag: uri,
-                      child: GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => PreviewScreen(uri: uri, isVideo: isVideo)),
-                        ),
-                        child: thumbPath != null
-                            ? Stack(
-                                children: [
-                                  Image.file(File(thumbPath), fit: BoxFit.cover, width: double.infinity),
-                                  if (isVideo)
-                                    Positioned(
-                                      left: 8,
-                                      top: 8,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(0.5),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: const Icon(Icons.play_arrow, color: Colors.white),
-                                      ),
-                                    ),
-                                ],
-                              )
-                            : SizedBox(
-                                height: 180,
-                                child: Shimmer.fromColors(
-                                  baseColor: Colors.grey.shade300,
-                                  highlightColor: Colors.grey.shade100,
-                                  child: Container(color: Colors.white),
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: ElevatedButton.icon(
-                      onPressed: () => saveStatus(uri),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 4,
-                      ),
-                      icon: const Icon(Icons.download),
-                      label: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          final item = items[index];
+
+          return _buildCard(
+            item,
           );
         },
       ),
     );
   }
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        centerTitle: true,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.green, Colors.teal],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(
+          24,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.hourglass_empty,
+              size: 90,
+              color: Colors.grey.shade400,
             ),
-          ),
-        ),
-        title: const Text(
-          'WA Status Fast Saver',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
-          indicatorWeight: 4,
-          tabs: const [
-            Tab(icon: Icon(Icons.chat), text: 'WhatsApp'),
-            Tab(icon: Icon(Icons.business), text: 'Business'),
+            const SizedBox(
+              height: 20,
+            ),
+            const Text(
+              'No statuses found',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(
+              height: 12,
+            ),
+            Text(
+              'Open WhatsApp and view at least one status, then press Refresh.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(
+              height: 24,
+            ),
+            ElevatedButton.icon(
+              onPressed: _refresh,
+              icon: const Icon(
+                Icons.refresh,
+              ),
+              label: const Text(
+                'Refresh',
+              ),
+            ),
           ],
         ),
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.green))
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                buildGrid(generalFiles),
-                buildGrid(businessFiles),
-              ],
+    );
+  }
+
+  Widget _buildCard(
+    StatusItem item,
+  ) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(
+        16,
+      ),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PreviewScreen(
+              item: item,
             ),
-      bottomNavigationBar: adLoaded
-          ? SizedBox(
-              height: bannerAd!.size.height.toDouble(),
-              width: bannerAd!.size.width.toDouble(),
-              child: AdWidget(ad: bannerAd!),
-            )
-          : null,
+          ),
+        );
+      },
+      child: Card(
+        elevation: 3,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(
+            16,
+          ),
+        ),
+        child: Stack(
+          children: [
+            AspectRatio(
+              aspectRatio: 0.70,
+              child: item.thumbnailPath == null
+                  ? Container(
+                      color: Colors.grey.shade200,
+                    )
+                  : Image.file(
+                      File(
+                        item.thumbnailPath!,
+                      ),
+                      fit: BoxFit.cover,
+                    ),
+            ),
+            if (item.isVideo)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(
+                    6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(
+                      50,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-// PreviewScreen accepts a URI and copies to temp before playing/displaying
 class PreviewScreen extends StatefulWidget {
-  final String uri;
-  final bool isVideo;
+  final StatusItem item;
 
-  const PreviewScreen({super.key, required this.uri, required this.isVideo});
+  const PreviewScreen({
+    super.key,
+    required this.item,
+  });
 
   @override
   State<PreviewScreen> createState() => _PreviewScreenState();
 }
 
 class _PreviewScreenState extends State<PreviewScreen> {
-  VideoPlayerController? controller;
-  String? tempPath;
+  VideoPlayerController? _videoController;
+
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    if (widget.isVideo) _prepareVideo();
-    else _prepareImage();
+
+    _initialize();
   }
 
-  Future<void> _prepareVideo() async {
-    final parentState = context.findAncestorStateOfType<_StatusScreenState>();
-    tempPath = await parentState?.copyUriToTempFile(widget.uri);
-    if (tempPath != null) {
-      controller = VideoPlayerController.file(File(tempPath!))
-        ..initialize().then((_) {
-          setState(() {});
-          controller!.play();
-        });
-    } else {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to open video')));
+  Future<void> _initialize() async {
+    if (!widget.item.isVideo) {
+      setState(() {
+        _loading = false;
+      });
+
+      return;
     }
-  }
 
-  Future<void> _prepareImage() async {
-    final parentState = context.findAncestorStateOfType<_StatusScreenState>();
-    tempPath = await parentState?.copyUriToTempFile(widget.uri);
-    if (mounted) setState(() {});
+    _videoController = VideoPlayerController.file(
+      File(widget.item.path),
+    );
+
+    await _videoController!.initialize();
+
+    await _videoController!.setLooping(true);
+
+    await _videoController!.play();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _loading = false;
+    });
   }
 
   @override
   void dispose() {
-    controller?.dispose();
+    _videoController?.dispose();
+
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    final displayPath = tempPath;
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black),
-      body: displayPath == null
-          ? const Center(child: CircularProgressIndicator(color: Colors.green))
-          : Stack(
-              fit: StackFit.expand,
+      appBar: AppBar(
+        title: Text(
+          widget.item.isVideo ? 'Video Preview' : 'Image Preview',
+        ),
+      ),
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : Column(
               children: [
-                Image.file(File(displayPath), fit: BoxFit.cover),
-                Container(color: Colors.black.withOpacity(0.6)),
-                Center(
-                  child: widget.isVideo
-                      ? (controller != null && controller!.value.isInitialized)
-                          ? AspectRatio(aspectRatio: controller!.value.aspectRatio, child: VideoPlayer(controller!))
-                          : const CircularProgressIndicator(color: Colors.green)
-                      : InteractiveViewer(child: Image.file(File(displayPath), fit: BoxFit.contain)),
+                Expanded(
+                  child: Center(
+                    child: widget.item.isVideo
+                        ? AspectRatio(
+                            aspectRatio: _videoController!.value.aspectRatio,
+                            child: VideoPlayer(
+                              _videoController!,
+                            ),
+                          )
+                        : InteractiveViewer(
+                            child: Image.file(
+                              File(
+                                widget.item.path,
+                              ),
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(
+                    16,
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: _saveStatus,
+                      icon: const Icon(
+                        Icons.download,
+                      ),
+                      label: const Text(
+                        'Save Status',
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
-      floatingActionButton: widget.isVideo
-          ? FloatingActionButton(
-              backgroundColor: Colors.green,
-              onPressed: () {
-                setState(() {
-                  if (controller!.value.isPlaying) controller!.pause();
-                  else controller!.play();
-                });
-              },
-              child: Icon((controller != null && controller!.value.isPlaying) ? Icons.pause : Icons.play_arrow),
-            )
-          : null,
     );
+  }
+
+  Future<void> _saveStatus() async {
+    try {
+      bool? result;
+
+      if (widget.item.isVideo) {
+        result = await GallerySaver.saveVideo(
+          widget.item.path,
+          albumName: 'StatusSaver',
+        );
+      } else {
+        result = await GallerySaver.saveImage(
+          widget.item.path,
+          albumName: 'StatusSaver',
+        );
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result == true
+                ? 'Status saved successfully'
+                : 'Unable to save status',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Save failed: $e',
+          ),
+        ),
+      );
+    }
   }
 }
