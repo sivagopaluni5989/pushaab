@@ -268,21 +268,29 @@ class StatusLoader {
     Saf saf,
   ) async {
     try {
-      await saf.cache();
+      final cacheResult = await saf.cache();
 
-      final files = await saf.getCachedFilesPath();
+debugPrint(
+  'CACHE RESULT: $cacheResult',
+);
 
-      debugPrint(
-        'FILES FOUND: ${files?.length}',
-      );
+final files = await saf.getCachedFilesPath();
 
-      debugPrint(
-        'FILES LIST: $files',
-      );
+debugPrint(
+  'FILES FOUND: ${files?.length}',
+);
 
-      if (files == null || files.isEmpty) {
-        return [];
-      }
+debugPrint(
+  'FILES LIST: $files',
+);
+
+if (files == null || files.isEmpty) {
+  debugPrint(
+    'NO FILES RETURNED FROM SAF',
+  );
+
+  return [];
+}
 
       final items = <StatusItem>[];
 
