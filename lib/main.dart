@@ -267,75 +267,82 @@ class StatusLoader {
   }
 
   static Future<List<StatusItem>> loadStatuses(
-    Saf saf,
-  ) async {
-    try {
-     final files = await saf.getFilesPath();
-
-debugPrint('FILES FOUND: ${files?.length}');
-debugPrint('FILES LIST: $files');
-
-debugPrint(
-  'FILES FOUND: ${files?.length}',
-);
-
-debugPrint(
-  'FILES LIST: $files',
-);
-
-if (files == null || files.isEmpty) {
-  debugPrint(
-    'NO FILES RETURNED FROM SAF',
-  );
-
-  return [];
-}
-
-      final items = <StatusItem>[];
-
-      for (final file in files) {
-  debugPrint('FILE => $file');
-
-  if (isImage(file)) {
-    items.add(
-      StatusItem(
-        path: file,
-        isVideo: false,
-      ),
+  Saf saf,
+) async {
+  try {
+    bool? permission =
+        await saf.getDirectoryPermission(
+      isDynamic: false,
     );
-  }
 
-  if (isVideo(file)) {
-    items.add(
-      StatusItem(
-        path: file,
-        isVideo: true,
-      ),
+    if (permission != true) {
+      debugPrint(
+        'SAF PERMISSION NOT GRANTED',
+      );
+
+      return [];
+    }
+
+    final files =
+        await saf.getFilesPath();
+
+    debugPrint(
+      'FILES FOUND: ${files?.length}',
     );
-  }
-}
 
-      for (final item in items) {
-        item.thumbnailPath = await ThumbnailService.createThumbnail(
-          item.path,
-          item.isVideo,
+    debugPrint(
+      'FILES LIST: $files',
+    );
+
+    if (files == null || files.isEmpty) {
+      return [];
+    }
+
+    final items = <StatusItem>[];
+
+    for (final file in files) {
+      if (isImage(file)) {
+        items.add(
+          StatusItem(
+            path: file,
+            isVideo: false,
+          ),
         );
       }
 
-      items.sort(
-        (a, b) => b.path.compareTo(
-          a.path,
-        ),
-      );
+      if (isVideo(file)) {
+        items.add(
+          StatusItem(
+            path: file,
+            isVideo: true,
+          ),
+        );
+      }
+    }
 
-      return items;
-    } catch (e, s) {
-      debugPrint('LOAD STATUS ERROR: $e');
-      debugPrint('$s');
-      return [];
+    for (final item in items) {
+      item.thumbnailPath =
+          await ThumbnailService.createThumbnail(
+        item.path,
+        item.isVideo,
+      );
+    }
+
+    return items;
+  } catch (e, s) {
+    debugPrint(
+      'LOAD STATUS ERROR: $e',
+    );
+
+    debugPrint(
+      '$s',
+    );
+
+          return [];
     }
   }
-}
+
+ }
 
 class StatusHomePage extends StatefulWidget {
   const StatusHomePage({
