@@ -413,18 +413,10 @@ class _StatusHomePageState extends State<StatusHomePage>
   }
 
   Future<void> _ensurePermissions() async {
-    final waGranted = await PermissionStorage.hasWhatsAppPermission();
+  await SafPermissionExtension.requestWhatsAppPermission();
 
-    final wbGranted = await PermissionStorage.hasBusinessPermission();
-
-    if (!waGranted) {
-      await SafPermissionExtension.requestWhatsAppPermission();
-    }
-
-    if (!wbGranted) {
-      await SafPermissionExtension.requestBusinessPermission();
-    }
-  }
+  await SafPermissionExtension.requestBusinessPermission();
+}
 
   Future<void> _loadStatuses() async {
     if (mounted) {
