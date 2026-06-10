@@ -36,7 +36,6 @@ class PermissionService {
     await Permission.photos.request();
     await Permission.videos.request();
     await Permission.storage.request();
-    await Permission.manageExternalStorage.request();
   }
 }
 class SafService {
