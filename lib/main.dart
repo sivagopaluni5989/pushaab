@@ -270,13 +270,10 @@ class StatusLoader {
     Saf saf,
   ) async {
     try {
-      final cacheResult = await saf.cache();
+     final files = await saf.getFilesPath();
 
-debugPrint(
-  'CACHE RESULT: $cacheResult',
-);
-
-final files = await saf.getCachedFilesPath();
+debugPrint('FILES FOUND: ${files?.length}');
+debugPrint('FILES LIST: $files');
 
 debugPrint(
   'FILES FOUND: ${files?.length}',
