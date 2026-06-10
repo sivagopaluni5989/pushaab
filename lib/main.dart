@@ -1,6 +1,7 @@
+import 'dart:math';
+import 'package:cross_file/cross_file.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
@@ -8,10 +9,9 @@ import 'package:saf/saf.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail_plus/video_thumbnail_plus.dart';
 import 'package:gallery_saver_plus/gallery_saver.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:share_plus/share_plus.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +24,6 @@ class AppConfig {
   static const String whatsappFolder = 'Android/media/com.whatsapp/WhatsApp/Media/.Statuses';
   static const String businessFolder = 'Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses';
 }
-
 class StatusItem {
   final String path;
   final bool isVideo;
@@ -40,7 +39,6 @@ class PermissionService {
     await Permission.manageExternalStorage.request();
   }
 }
-
 class SafService {
   static final Saf whatsapp = Saf(AppConfig.whatsappFolder);
   static final Saf business = Saf(AppConfig.businessFolder);
@@ -110,12 +108,12 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
 class StatusHomePage extends StatefulWidget {
   const StatusHomePage({super.key});
   @override
   State<StatusHomePage> createState() => _StatusHomePageState();
 }
+
 class _StatusHomePageState extends State<StatusHomePage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   BannerAd? _bannerAd;
@@ -131,7 +129,6 @@ class _StatusHomePageState extends State<StatusHomePage> with SingleTickerProvid
     _loadBanner();
     _startup();
   }
-
   void _loadBanner() {
     _bannerAd = BannerAd(
       size: AdSize.banner,
@@ -143,11 +140,11 @@ class _StatusHomePageState extends State<StatusHomePage> with SingleTickerProvid
     );
     _bannerAd!.load();
   }
+
   Future<void> _startup() async {
     await PermissionService.requestAllPermissions();
     await _loadStatuses();
   }
-
   Future<void> _loadStatuses() async {
     setState(() => _loading = true);
     final wa = await StatusLoader.loadStatuses(SafService.whatsapp);
@@ -161,7 +158,6 @@ class _StatusHomePageState extends State<StatusHomePage> with SingleTickerProvid
   }
 
   Future<void> _refresh() async => _loadStatuses();
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -236,7 +232,7 @@ class _StatusHomePageState extends State<StatusHomePage> with SingleTickerProvid
       ),
     );
   }
-    Widget _buildEmptyState() {
+  Widget _buildEmptyState() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -266,7 +262,6 @@ class _StatusHomePageState extends State<StatusHomePage> with SingleTickerProvid
       ),
     );
   }
-
   Widget _buildCard(StatusItem item) {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -307,7 +302,6 @@ class _StatusHomePageState extends State<StatusHomePage> with SingleTickerProvid
     );
   }
 }
-
 class PreviewScreen extends StatefulWidget {
   final StatusItem item;
   const PreviewScreen({super.key, required this.item});
@@ -329,8 +323,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
       setState(() => _loading = false);
       return;
     }
-   
-
     _videoController = VideoPlayerController.file(File(widget.item.path));
     await _videoController!.initialize();
     await _videoController!.setLooping(true);
@@ -371,7 +363,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     width: double.infinity,
                     height: 55,
                     child: ElevatedButton.icon(
-                      onPressed: _saveStatus,
+                      onPressed: () => saveFile(context, widget.item),
                       icon: const Icon(Icons.download),
                       label: const Text('Save Status'),
                     ),
@@ -381,36 +373,110 @@ class _PreviewScreenState extends State<PreviewScreen> {
             ),
     );
   }
-   Future<void> _saveStatus() async {
-    try {
-      final file = File(widget.item.path);
-      if (!await file.exists()) throw Exception('File not found');
+}
+void showSnack(BuildContext context, String message, {bool success = true}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      backgroundColor: success ? Colors.green : Colors.red,
+    ),
+  );
+}
+Future<void> saveFile(BuildContext context, StatusItem item) async {
+  try {
+    final file = File(item.path);
+    if (!await file.exists()) throw Exception('File not found');
 
-      final targetDir = Directory(widget.item.isVideo
-          ? '/storage/emulated/0/Movies/StatusSaver'
-          : '/storage/emulated/0/Pictures/StatusSaver');
+    final targetDir = Directory(item.isVideo
+        ? '/storage/emulated/0/Movies/StatusSaver'
+        : '/storage/emulated/0/Pictures/StatusSaver');
 
-      if (!await targetDir.exists()) await targetDir.create(recursive: true);
+    if (!await targetDir.exists()) await targetDir.create(recursive: true);
 
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}'
-          '${widget.item.isVideo ? '.mp4' : '.jpg'}';
-      final savedPath = '${targetDir.path}/$fileName';
-      final savedFile = await file.copy(savedPath);
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}'
+        '${item.isVideo ? '.mp4' : '.jpg'}';
+    final savedPath = '${targetDir.path}/$fileName';
+    final savedFile = await file.copy(savedPath);
 
-      bool? result;
-      if (widget.item.isVideo) {
-        result = await GallerySaver.saveVideo(savedFile.path, albumName: 'StatusSaver');
-      } else {
-        result = await GallerySaver.saveImage(savedFile.path, albumName: 'StatusSaver');
-      }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result == true ? 'Status saved successfully' : 'Unable to save status')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+    bool? result;
+    if (item.isVideo) {
+      result = await GallerySaver.saveVideo(savedFile.path, albumName: 'StatusSaver');
+    } else {
+      result = await GallerySaver.saveImage(savedFile.path, albumName: 'StatusSaver');
     }
+
+    showSnack(context, result == true ? 'Status saved successfully' : 'Unable to save status');
+  } catch (e) {
+    showSnack(context, 'Save failed: $e', success: false);
   }
 }
+Widget quickSaveButton(BuildContext context, StatusItem item) {
+  return Padding(
+    padding: const EdgeInsets.all(8),
+    child: ElevatedButton.icon(
+      onPressed: () => saveFile(context, item),
+      icon: const Icon(Icons.download),
+      label: const Text('Quick Save'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+  );
+}
+
+String formatDate(DateTime date) {
+  return "${date.day}-${date.month}-${date.year} ${date.hour}:${date.minute}";
+}
+List<StatusItem> filterVideos(List<StatusItem> items) =>
+    items.where((item) => item.isVideo).toList();
+
+List<StatusItem> filterImages(List<StatusItem> items) =>
+    items.where((item) => !item.isVideo).toList();
+Future<void> clearCache() async {
+  final tempDir = await getTemporaryDirectory();
+  if (await tempDir.exists()) {
+    await tempDir.delete(recursive: true);
+  }
+}
+Future<void> deleteSavedFile(String path) async {
+  try {
+    final file = File(path);
+    if (await file.exists()) {
+      await file.delete();
+    }
+  } catch (e) {
+    debugPrint("Delete error: $e");
+  }
+}
+Future<void> shareStatus(String path) async {
+  try {
+    await Share.shareXFiles([XFile(path)], text: "Check out this WhatsApp Status!");
+  } catch (e) {
+    debugPrint("Share error: $e");
+  }
+}
+String formatFileSize(int bytes) {
+  if (bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  int i = (log(bytes) / log(1024)).floor();
+  double size = bytes / pow(1024, i);
+  return "${size.toStringAsFixed(2)} ${units[i]}";
+}
+
+
+
+// Performance Notes:
+// - Thumbnail generation async, avoids blocking UI.
+// - SAF ensures Android 11+ Scoped Storage compatibility.
+// - Shimmer placeholders improve perceived performance.
+// - GridView staggered layout for aesthetics.
+// ✅ Final main.dart (Slices 1–30)
+// - Robust SAF + Scoped Storage
+// - Stylish staggered grid + shimmer
+// - Banner ads integrated
+// - Preview screen with video playback + zoomable images
+// - Centralized save logic + Quick Save
+// - Extendable utilities: format, filter, cache, delete, share
+// Ready for Play Store deployment.
