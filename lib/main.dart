@@ -236,7 +236,9 @@ class ThumbnailService {
         imageFormat: ImageFormat.JPEG,
         quality: 90,
       );
-    } catch (_) {
+    } catch (e, s) {
+      debugPrint('THUMBNAIL ERROR: $e');
+      debugPrint('$s');
       return null;
     }
   }
@@ -295,24 +297,26 @@ if (files == null || files.isEmpty) {
       final items = <StatusItem>[];
 
       for (final file in files) {
-        if (isImage(file)) {
-          items.add(
-            StatusItem(
-              path: file,
-              isVideo: false,
-            ),
-          );
-        }
+  debugPrint('FILE => $file');
 
-        if (isVideo(file)) {
-          items.add(
-            StatusItem(
-              path: file,
-              isVideo: true,
-            ),
-          );
-        }
-      }
+  if (isImage(file)) {
+    items.add(
+      StatusItem(
+        path: file,
+        isVideo: false,
+      ),
+    );
+  }
+
+  if (isVideo(file)) {
+    items.add(
+      StatusItem(
+        path: file,
+        isVideo: true,
+      ),
+    );
+  }
+}
 
       for (final item in items) {
         item.thumbnailPath = await ThumbnailService.createThumbnail(
@@ -328,7 +332,9 @@ if (files == null || files.isEmpty) {
       );
 
       return items;
-    } catch (_) {
+    } catch (e, s) {
+      debugPrint('LOAD STATUS ERROR: $e');
+      debugPrint('$s');
       return [];
     }
   }
