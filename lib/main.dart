@@ -83,19 +83,26 @@ class StatusLoader {
 
       final files = await saf.getFilesPath();
 
-      debugPrint("Files found = ${files?.length}");
+debugPrint("Files found = ${files?.length}");
 
-      if (files != null) {
-        for (final f in files) {
-  debugPrint("FILE: $f");
-  debugPrint("EXISTS: ${File(f).existsSync()}");
+if (files != null) {
+  for (final f in files) {
+    debugPrint("FILE = $f");
+
+    if (f.startsWith("content://")) {
+      debugPrint("URI DETECTED");
+    } else {
+      debugPrint(
+        "EXISTS = ${File(f).existsSync()}",
+      );
+    }
+  }
 }
-      }
 
-      if (files == null || files.isEmpty) {
-        debugPrint("No files returned by SAF");
-        return [];
-      }
+if (files == null || files.isEmpty) {
+  debugPrint("No files returned by SAF");
+  return [];
+}
 
       final items = <StatusItem>[];
 
@@ -316,11 +323,20 @@ class _StatusHomePageState extends State<StatusHomePage> with SingleTickerProvid
         child: Stack(
           children: [
             AspectRatio(
-              aspectRatio: 0.70,
-              child: item.thumbnailPath == null
-                  ? Container(color: Colors.grey.shade200)
-                  : Image.file(File(item.thumbnailPath!), fit: BoxFit.cover),
-            ),
+  aspectRatio: 0.70,
+  child: item.thumbnailPath == null ||
+          !File(item.thumbnailPath!).existsSync()
+      ? Container(
+          color: Colors.grey.shade200,
+          child: const Center(
+            child: Icon(Icons.image_not_supported),
+          ),
+        )
+      : Image.file(
+          File(item.thumbnailPath!),
+          fit: BoxFit.cover,
+        ),
+),
             if (item.isVideo)
               Positioned(
                 right: 8,
