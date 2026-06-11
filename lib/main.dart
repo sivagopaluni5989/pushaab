@@ -366,25 +366,33 @@ class _PreviewScreenState extends State<PreviewScreen> {
     _videoController?.dispose();
     super.dispose();
   }
-  @override
+   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.item.isVideo ? 'Video Preview' : 'Image Preview'),
+        title: Text(
+          widget.item.isVideo ? 'Video Preview' : 'Image Preview',
+        ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
           : Column(
               children: [
                 Expanded(
                   child: Center(
                     child: widget.item.isVideo
                         ? AspectRatio(
-                            aspectRatio: _videoController!.value.aspectRatio,
+                            aspectRatio:
+                                _videoController!.value.aspectRatio,
                             child: VideoPlayer(_videoController!),
                           )
                         : InteractiveViewer(
-                            child: Image.file(File(widget.item.path), fit: BoxFit.contain),
+                            child: Image.file(
+                              File(widget.item.path),
+                              fit: BoxFit.contain,
+                            ),
                           ),
                   ),
                 ),
@@ -394,7 +402,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     width: double.infinity,
                     height: 55,
                     child: ElevatedButton.icon(
-                      onPressed: () => saveFile(context, widget.item),
+                      onPressed: () =>
+                          saveFile(context, widget.item),
                       icon: const Icon(Icons.download),
                       label: const Text('Save Status'),
                     ),
