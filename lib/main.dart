@@ -425,27 +425,30 @@ void showSnack(BuildContext context, String message, {bool success = true}) {
 Future<void> saveFile(BuildContext context, StatusItem item) async {
   try {
     final file = File(item.path);
-    if (!await file.exists()) throw Exception('File not found');
 
-    final targetDir = Directory(item.isVideo
-        ? '/storage/emulated/0/Movies/StatusSaver'
-        : '/storage/emulated/0/Pictures/StatusSaver');
-
-    if (!await targetDir.exists()) await targetDir.create(recursive: true);
-
-    final fileName = '${DateTime.now().millisecondsSinceEpoch}'
-        '${item.isVideo ? '.mp4' : '.jpg'}';
-    final savedPath = '${targetDir.path}/$fileName';
-    final savedFile = await file.copy(savedPath);
-
-    bool? result;
-    if (item.isVideo) {
-      result = await GallerySaver.saveVideo(savedFile.path, albumName: 'StatusSaver');
-    } else {
-      result = await GallerySaver.saveImage(savedFile.path, albumName: 'StatusSaver');
+    if (!await file.exists()) {
+      throw Exception('File not found');
     }
 
-    showSnack(context, result == true ? 'Status saved successfully' : 'Unable to save status');
+    bool? result;
+
+    if (item.isVideo) {
+      result = await GallerySaver.saveVideo(
+        file.path,
+        albumName: 'StatusSaver',
+      );
+    } else {
+      result = await GallerySaver.saveImage(
+        file.path,
+        albumName: 'StatusSaver',
+      );
+    }
+
+    if (result == true) {
+      showSnack(context, 'Status saved successfully');
+    } else {
+      showSnack(context, 'Unable to save status', success: false);
+    }
   } catch (e) {
     showSnack(context, 'Save failed: $e', success: false);
   }
