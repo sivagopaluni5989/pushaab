@@ -87,8 +87,9 @@ class StatusLoader {
 
       if (files != null) {
         for (final f in files) {
-          debugPrint("FILE: $f");
-        }
+  debugPrint("FILE: $f");
+  debugPrint("EXISTS: ${File(f).existsSync()}");
+}
       }
 
       if (files == null || files.isEmpty) {
@@ -109,21 +110,27 @@ class StatusLoader {
       }
 
       for (final item in items) {
-        item.thumbnailPath = await ThumbnailService.createThumbnail(
-          item.path,
-          item.isVideo,
-        );
-      }
+  item.thumbnailPath = await ThumbnailService.createThumbnail(
+    item.path,
+    item.isVideo,
+  );
 
-      debugPrint("Status items = ${items.length}");
+  debugPrint(
+    "THUMB: ${item.path} -> ${item.thumbnailPath}",
+  );
+}
 
-      return items;
+debugPrint("Status items = ${items.length}");
+
+return items;
     } catch (e) {
       debugPrint("Load error: $e");
       return [];
     }
   }
 }
+
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
