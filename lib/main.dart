@@ -71,20 +71,52 @@ class StatusLoader {
 
   static Future<List<StatusItem>> loadStatuses(Saf saf) async {
     try {
-      bool? permission = await saf.getDirectoryPermission(isDynamic: false);
-      if (permission != true) return [];
+      bool? permission =
+          await saf.getDirectoryPermission(isDynamic: false);
+
+      debugPrint("SAF permission = $permission");
+
+      if (permission != true) {
+        debugPrint("Permission denied");
+        return [];
+      }
+
       final files = await saf.getFilesPath();
-      if (files == null || files.isEmpty) return [];
+
+      debugPrint("Files found = ${files?.length}");
+
+      if (files != null) {
+        for (final f in files) {
+          debugPrint("FILE: $f");
+        }
+      }
+
+      if (files == null || files.isEmpty) {
+        debugPrint("No files returned by SAF");
+        return [];
+      }
 
       final items = <StatusItem>[];
+
       for (final file in files) {
-        if (isImage(file)) items.add(StatusItem(path: file, isVideo: false));
-        if (isVideo(file)) items.add(StatusItem(path: file, isVideo: true));
+        if (isImage(file)) {
+          items.add(StatusItem(path: file, isVideo: false));
+        }
+
+        if (isVideo(file)) {
+          items.add(StatusItem(path: file, isVideo: true));
+        }
       }
 
       for (final item in items) {
-        item.thumbnailPath = await ThumbnailService.createThumbnail(item.path, item.isVideo);
+        item.thumbnailPath = await ThumbnailService.createThumbnail(
+          item.path,
+          item.isVideo,
+        );
       }
+
+      debugPrint("Status items = ${items.length}");
+
       return items;
     } catch (e) {
       debugPrint("Load error: $e");
