@@ -25,7 +25,7 @@ class AppConstants {
   static const String whatsappTreeUri = 
       'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia%2F.Statuses';
   static const String whatsappBusinessTreeUri = 
-      'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.w4b%2FWhatsApp%20Business%2FMedia%2F.Statuses';
+      'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp.w4b%2FWhatsApp%20Business%2FMedia%2F.Statuses';
 
   static const String legacyWhatsappPath = '/storage/emulated/0/WhatsApp/Media/.Statuses';
   static const String legacyBusinessPath = '/storage/emulated/0/WhatsApp Business/Media/.Statuses';
@@ -224,21 +224,23 @@ class StoragePermissionEngine {
       bool wbVerified = false;
 
       try {
-        if (hasWaUri) {
-          final safMain = Saf(AppConstants.whatsappTreeUri);
-          waVerified = await Saf.isPersistedPermissionDirectoryFor(
-  AppConstants.whatsappTreeUri,
-) ?? false;
-        }
+if (hasWaUri) {
+  final savedUri = prefs.getString(AppConstants.keySafUriMain);
+  if (savedUri != null) {
+    final saf = Saf(savedUri);
+    waVerified = await Saf.isPersistedPermissionDirectoryFor(savedUri) ?? false;
+  }
+}
       } catch (_) {}
 
       try {
-        if (hasWbUri) {
-          final safBusiness = Saf(AppConstants.whatsappBusinessTreeUri);
-          wbVerified = await Saf.isPersistedPermissionDirectoryFor(
-  AppConstants.whatsappBusinessTreeUri,
-) ?? false;
-        }
+if (hasWbUri) {
+  final savedUri = prefs.getString(AppConstants.keySafUriBusiness);
+  if (savedUri != null) {
+    final saf = Saf(savedUri);
+    wbVerified = await Saf.isPersistedPermissionDirectoryFor(savedUri) ?? false;
+  }
+}
       } catch (_) {}
 
       provider.updateSafPermissionStatus(whatsapp: waVerified, business: wbVerified);
@@ -254,14 +256,25 @@ class StoragePermissionEngine {
     
     try {
       final saf = Saf(targetUri);
-      final isGranted = await saf.getDirectoryPermission(grantWritePermission: false);
+      final isGranted = await saf.getDirectoryPermission(
+  grantWritePermission: false,
+);
+
+debugPrint(
+  "SAF ${isBusiness ? 'BUSINESS' : 'WHATSAPP'} granted = $isGranted",
+);
       
       if (isGranted == true) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(prefKey, targetUri);
-        await checkAndSyncPermissions(provider);
-        return true;
-      }
+  final prefs = await SharedPreferences.getInstance();
+
+  await prefs.setString(prefKey, targetUri);
+
+  debugPrint("Saved URI = $targetUri");
+
+  await checkAndSyncPermissions(provider);
+  return true;
+}
+      
     } catch (e) {
       debugPrint("SAF Tree initialization exception: $e");
     }
