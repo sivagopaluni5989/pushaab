@@ -10,12 +10,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail_plus/video_thumbnail_plus.dart';
-import 'package:gallery_saver_plus/gallery_saver.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:cross_file/cross_file.dart';
 class AppConstants {
   static const String appName = 'WA Status Fast Saver';
   
@@ -219,33 +216,49 @@ class StoragePermissionEngine {
     if (await isAndroid11OrAbove()) {
       final hasWaUri = prefs.getString(AppConstants.keySafUriMain) != null;
       final hasWbUri = prefs.getString(AppConstants.keySafUriBusiness) != null;
+      debugPrint("========== SAF DEBUG START ==========");
+      debugPrint("Stored WA URI: ${prefs.getString(AppConstants.keySafUriMain)}");
+      debugPrint("Stored WB URI: ${prefs.getString(AppConstants.keySafUriBusiness)}");      
+
       
       bool waVerified = false;
       bool wbVerified = false;
 
       try {
-if (hasWaUri) {
-  final savedUri = prefs.getString(AppConstants.keySafUriMain);
-  if (savedUri != null) {
-    final saf = Saf(savedUri);
-    waVerified = await Saf.isPersistedPermissionDirectoryFor(savedUri) ?? false;
-  }
-}
-      } catch (_) {}
+  if (hasWaUri) {
+    final savedUri = prefs.getString(AppConstants.keySafUriMain);
 
-      try {
-if (hasWbUri) {
-  final savedUri = prefs.getString(AppConstants.keySafUriBusiness);
-  if (savedUri != null) {
-    final saf = Saf(savedUri);
-    wbVerified = await Saf.isPersistedPermissionDirectoryFor(savedUri) ?? false;
+    if (savedUri != null) {
+      waVerified =
+          await Saf.isPersistedPermissionDirectoryFor(savedUri) ?? false;
+
+      debugPrint("WA persisted permission: $waVerified");
+    }
   }
+} catch (e) {
+  debugPrint("WA SAF error: $e");
 }
-      } catch (_) {}
+
+try {
+  if (hasWbUri) {
+    final savedUri = prefs.getString(AppConstants.keySafUriBusiness);
+
+    if (savedUri != null) {
+      wbVerified =
+          await Saf.isPersistedPermissionDirectoryFor(savedUri) ?? false;
+
+      debugPrint("WB persisted permission: $wbVerified");
+    }
+  }
+} catch (e) {
+  debugPrint("WB SAF error: $e");
+}
+      debugPrint("FINAL SAF STATUS => WA: $waVerified, WB: $wbVerified");
 
       provider.updateSafPermissionStatus(whatsapp: waVerified, business: wbVerified);
     } else {
       final status = await Permission.storage.status;
+      
       provider.updateSafPermissionStatus(whatsapp: status.isGranted, business: status.isGranted);
     }
   }
@@ -302,14 +315,13 @@ class MediaProcessingEngine {
 
     try {
       final isModernAndroid = await StoragePermissionEngine.isAndroid11OrAbove();
-      
       if (isModernAndroid) {
-        if (provider.hasSafPermissionWhatsapp) {
-          final results = await _fetchSafDirectoryMedia(AppConstants.whatsappTreeUri);
-          waImages = results.where((e) => !e.isVideo).toList();
-          waVideos = results.where((e) => e.isVideo).toList();
-        }
-      } else {
+  if (provider.hasSafPermissionWhatsapp) {
+    final results = await _fetchSafDirectoryMedia(AppConstants.whatsappTreeUri);
+    waImages = results.where((e) => !e.isVideo).toList();
+    waVideos = results.where((e) => e.isVideo).toList();
+  }
+} else {
         final results = await _fetchLegacyDirectoryMedia(AppConstants.legacyWhatsappPath);
         waImages = results.where((e) => !e.isVideo).toList();
         waVideos = results.where((e) => e.isVideo).toList();
@@ -582,7 +594,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen> with SingleTi
               const Text("WA Business", style: TextStyle(color: Colors.white, fontSize: 13)),
               Switch(
                 value: provider.isWhatsAppBusinessActive,
-                activeColor: AppTheme.accentColor,
+                activeThumbColor: AppTheme.accentColor,
                 onChanged: (val) {
                   provider.setWhatsAppBusinessActive(val);
                 },
@@ -743,7 +755,7 @@ class EmptyStateDisplayWidget extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(iconData, size: 72, color: AppTheme.textSecondary.withOpacity(0.4)),
+            Icon(iconData, size: 72, color: AppTheme.textSecondary.withValues(alpha: 0.4)),
             const SizedBox(height: 16),
             Text(
               message,
@@ -830,7 +842,7 @@ class _PermissionGatekeeperOverlayState extends State<PermissionGatekeeperOverla
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
+              color: AppTheme.primaryColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -1396,7 +1408,7 @@ class ApplicationSettingsView extends StatelessWidget {
       secondary: Icon(leadSymbol, color: AppTheme.primaryColor, size: 24),
       title: Text(heading, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
       subtitle: Text(dynamicText, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-      activeColor: AppTheme.accentColor,
+      activeThumbColor: AppTheme.accentColor,
       value: statusMarker,
       onChanged: actionHook,
     );
@@ -1434,7 +1446,7 @@ class NavigationDrawerFrameWidget extends StatelessWidget {
                 ),
                 Text(
                   "High-Speed Scoped Directory Utility",
-                  style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.8), fontWeight: FontWeight.w400),
+                  style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.8), fontWeight: FontWeight.w400),
                 ),
               ],
             ),
@@ -1461,7 +1473,8 @@ class NavigationDrawerFrameWidget extends StatelessWidget {
             child: Text(
               "Engine Architecture v1.0.4+4",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: AppTheme.textSecondary.withOpacity(0.6), fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 11,   color: AppTheme.textSecondary.withValues(alpha: 0.6),
+ fontWeight: FontWeight.w600),
             ),
           ),
         ],
