@@ -13,6 +13,17 @@ import 'package:video_thumbnail_plus/video_thumbnail_plus.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+Future<void> writeDebugLog(String message) async {
+  final file = File(
+    "/storage/emulated/0/Android/data/com.bravesstudio.wastatusfastsaver/files/debug.txt",
+  );
+
+  await file.writeAsString(
+    "${DateTime.now()} : $message\n",
+    mode: FileMode.append,
+  );
+}
+
 class AppConstants {
   static const String appName = 'WA Status Fast Saver';
   
@@ -263,39 +274,59 @@ try {
     }
   }
 
-  static Future<bool> requestSafDirectory(bool isBusiness, StatusProvider provider) async {
-    final targetUri = isBusiness ? AppConstants.whatsappBusinessTreeUri : AppConstants.whatsappTreeUri;
-    final prefKey = isBusiness ? AppConstants.keySafUriBusiness : AppConstants.keySafUriMain;
-    debugPrint(
+  static Future<bool> requestSafDirectory(
+    bool isBusiness,
+    StatusProvider provider) async {
+
+  final targetUri = isBusiness
+      ? AppConstants.whatsappBusinessTreeUri
+      : AppConstants.whatsappTreeUri;
+
+  final prefKey = isBusiness
+      ? AppConstants.keySafUriBusiness
+      : AppConstants.keySafUriMain;
+
+  debugPrint(
     "requestSafDirectory started: ${isBusiness ? 'BUSINESS' : 'WHATSAPP'}",
   );
 
-    try {
-      final saf = Saf(targetUri);
-      final isGranted = await saf.getDirectoryPermission(
-  grantWritePermission: false,
-);
+  await writeDebugLog(
+    "requestSafDirectory started: ${isBusiness ? 'BUSINESS' : 'WHATSAPP'}",
+  );
 
-debugPrint(
-  "SAF ${isBusiness ? 'BUSINESS' : 'WHATSAPP'} granted = $isGranted",
-);
-      
-      if (isGranted == true) {
-  final prefs = await SharedPreferences.getInstance();
+  try {
+    final saf = Saf(targetUri);
 
-  await prefs.setString(prefKey, targetUri);
+    final isGranted = await saf.getDirectoryPermission(
+      grantWritePermission: false,
+    );
 
-  debugPrint("Saved URI = $targetUri");
+    debugPrint(
+      "SAF ${isBusiness ? 'BUSINESS' : 'WHATSAPP'} granted = $isGranted",
+    );
 
-  await checkAndSyncPermissions(provider);
-  return true;
-}
-      
-    } catch (e) {
-      debugPrint("SAF Tree initialization exception: $e");
+    await writeDebugLog(
+      "SAF ${isBusiness ? 'BUSINESS' : 'WHATSAPP'} granted = $isGranted",
+    );
+
+    if (isGranted == true) {
+      final prefs = await SharedPreferences.getInstance();
+
+      await prefs.setString(prefKey, targetUri);
+
+      await writeDebugLog("Saved URI = $targetUri");
+
+      await checkAndSyncPermissions(provider);
+
+      return true;
     }
-    return false;
+  } catch (e) {
+    debugPrint("SAF Tree initialization exception: $e");
+    await writeDebugLog("SAF exception: $e");
   }
+
+  return false;
+}
 
   static Future<bool> requestLegacyStoragePermission(StatusProvider provider) async {
     final status = await Permission.storage.request();
