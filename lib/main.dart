@@ -266,7 +266,10 @@ try {
   static Future<bool> requestSafDirectory(bool isBusiness, StatusProvider provider) async {
     final targetUri = isBusiness ? AppConstants.whatsappBusinessTreeUri : AppConstants.whatsappTreeUri;
     final prefKey = isBusiness ? AppConstants.keySafUriBusiness : AppConstants.keySafUriMain;
-    
+    debugPrint(
+    "requestSafDirectory started: ${isBusiness ? 'BUSINESS' : 'WHATSAPP'}",
+  );
+
     try {
       final saf = Saf(targetUri);
       final isGranted = await saf.getDirectoryPermission(
@@ -788,40 +791,52 @@ class _PermissionGatekeeperOverlayState extends State<PermissionGatekeeperOverla
   bool _isProcessingHandshake = false;
 
   Future<void> _handlePermissionRequest() async {
-    if (_isProcessingHandshake) return;
-    setState(() => _isProcessingHandshake = true);
+  debugPrint("===== GRANT BUTTON CLICKED =====");
 
-    final provider = InheritedStatusProvider.of(context);
-    final isModernAndroid = await StoragePermissionEngine.isAndroid11OrAbove();
+  if (_isProcessingHandshake) return;
 
-    try {
-      if (isModernAndroid) {
-        final granted = await StoragePermissionEngine.requestSafDirectory(
-          widget.isBusinessScope, 
-          provider,
-        );
-        if (granted) {
-          await MediaProcessingEngine.synchronizeAppMedia(provider);
-        } else {
-          _showFeedbackSnackbar("Permission is required to view status files.");
-        }
+  setState(() => _isProcessingHandshake = true);
+
+  final provider = InheritedStatusProvider.of(context);
+  final isModernAndroid =
+      await StoragePermissionEngine.isAndroid11OrAbove();
+
+  debugPrint("Android 11+ = $isModernAndroid");
+
+  try {
+    if (isModernAndroid) {
+      debugPrint("Calling requestSafDirectory");
+
+      final granted = await StoragePermissionEngine.requestSafDirectory(
+        widget.isBusinessScope,
+        provider,
+      );
+
+      debugPrint("requestSafDirectory returned = $granted");
+
+      if (granted) {
+        await MediaProcessingEngine.synchronizeAppMedia(provider);
       } else {
-        final granted = await StoragePermissionEngine.requestLegacyStoragePermission(provider);
-        if (granted) {
-          await MediaProcessingEngine.synchronizeAppMedia(provider);
-        } else {
-          _showFeedbackSnackbar("Storage access permission denied.");
-        }
+        _showFeedbackSnackbar(
+          "Permission is required to view status files.",
+        );
       }
-    } catch (e) {
-      debugPrint("Handshake execution failure: $e");
-    } finally {
-      if (mounted) {
-        setState(() => _isProcessingHandshake = false);
+    } else {
+      final granted =
+          await StoragePermissionEngine.requestLegacyStoragePermission(provider);
+
+      if (granted) {
+        await MediaProcessingEngine.synchronizeAppMedia(provider);
       }
     }
+  } catch (e) {
+    debugPrint("Handshake execution failure: $e");
+  } finally {
+    if (mounted) {
+      setState(() => _isProcessingHandshake = false);
+    }
   }
-
+}
   void _showFeedbackSnackbar(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
