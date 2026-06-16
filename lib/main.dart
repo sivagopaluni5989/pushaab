@@ -1,211 +1,270 @@
 import 'dart:io';
-import 'dart:collection';
 import 'package:flutter/material.dart';
+import 'package:saf/saf.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const App());
 }
 
 /// =========================
-/// ROOT APP
+/// APP ROOT
 /// =========================
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class App extends StatelessWidget {
+  const App({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: HomePage(),
+      theme: ThemeData.dark(),
+      home: const HomePage(),
     );
   }
 }
 
 /// =========================
-/// HOME PAGE (dummy files list placeholder)
+/// SAF SERVICE
 /// =========================
-class HomePage extends StatelessWidget {
+class SafService {
+  static const keyMain = "wa_uri";
+
+  /// Pick WhatsApp Status folder
+  static Future<Saf?> pickFolder() async {
+    final uri = Uri.parse(
+      "content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia%2F.Statuses",
+    );
+
+    // IMPORTANT: saf ^1.0.4 expects String, NOT Uri
+    final saf = Saf(uri.toString());
+
+    final granted = await saf.getDirectoryPermission(
+      grantWritePermission: false,
+    );
+
+    if (granted != true) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    // Store ORIGINAL URI string
+    await prefs.setString(keyMain, uri.toString());
+
+    return saf;
+  }
+
+  /// Restore saved SAF session
+  static Future<Saf?> restore() async {
+    final prefs = await SharedPreferences.getInstance();
+    final uriStr = prefs.getString(keyMain);
+
+    if (uriStr == null) return null;
+
+    final saf = Saf(uriStr);
+
+    final granted = await saf.getDirectoryPermission(
+      grantWritePermission: false,
+    );
+
+    if (granted != true) return null;
+
+    return saf;
+  }
+}
+
+/// =========================
+/// STATUS LOADER
+/// =========================
+class StatusLoader {
+  static Future<List<String>> load(Saf saf) async {
+    final files = await saf.getFilesPath();
+
+    if (files == null) return [];
+
+    return files.where((f) {
+      return f.endsWith(".jpg") ||
+          f.endsWith(".png") ||
+          f.endsWith(".mp4");
+    }).toList();
+  }
+}
+
+/// =========================
+/// HOME PAGE
+/// =========================
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
-  // Replace this with SAF loaded files
-  List<String> get files => [];
-
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Status Saver")),
-      body: GridView.builder(
-        itemCount: files.length,
-        cacheExtent: 5000,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-        ),
-        itemBuilder: (_, i) {
-          return VideoThumbnailWidget(videoPath: files[i]);
-        },
-      ),
-    );
-  }
+  State<HomePage> createState() => _HomePageState();
 }
 
-/// =========================
-/// LRU CACHE
-/// =========================
-class LruCache<K, V> {
-  final int maxSize;
-  final _map = LinkedHashMap<K, V>();
-
-  LruCache(this.maxSize);
-
-  V? get(K key) {
-    if (!_map.containsKey(key)) return null;
-    final val = _map.remove(key);
-    _map[key] = val as V;
-    return val;
-  }
-
-  void put(K key, V value) {
-    if (_map.length >= maxSize) {
-      _map.remove(_map.keys.first);
-    }
-    _map[key] = value;
-  }
-}
-
-final memoryCache = LruCache<String, String>(200);
-final Set<String> _processing = {};
-
-/// =========================
-/// THUMBNAIL WIDGET
-/// =========================
-class VideoThumbnailWidget extends StatefulWidget {
-  final String videoPath;
-
-  const VideoThumbnailWidget({
-    super.key,
-    required this.videoPath,
-  });
-
-  @override
-  State<VideoThumbnailWidget> createState() => _VideoThumbnailState();
-}
-
-class _VideoThumbnailState extends State<VideoThumbnailWidget> {
-  String? thumb;
+class _HomePageState extends State<HomePage> {
+  List<String> files = [];
   bool loading = true;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    init();
+  }
+
+  Future<void> init() async {
+    final saf = await SafService.restore();
+
+    if (saf == null) {
+      setState(() => loading = false);
+      return;
+    }
+
+    final data = await StatusLoader.load(saf);
+
+    setState(() {
+      files = data;
+      loading = false;
+    });
+  }
+
+  Future<void> askPermission() async {
+    final saf = await SafService.pickFolder();
+
+    if (saf == null) return;
+
+    final data = await StatusLoader.load(saf);
+
+    setState(() {
+      files = data;
+      loading = false;
+    });
   }
 
   @override
-  void didUpdateWidget(covariant VideoThumbnailWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text("WA Status Downloader"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            onPressed: askPermission,
+          )
+        ],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : files.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        "No Status Found",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      const SizedBox(height: 10),
+                      ElevatedButton(
+                        onPressed: askPermission,
+                        child: const Text("Grant Access"),
+                      )
+                    ],
+                  ),
+                )
+              : GridView.builder(
+                  itemCount: files.length,
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 2,
+                    mainAxisSpacing: 2,
+                  ),
+                  itemBuilder: (_, i) {
+                    return StatusTile(path: files[i]);
+                  },
+                ),
+    );
+  }
+}
 
-    if (oldWidget.videoPath != widget.videoPath) {
-      thumb = null;
-      loading = true;
-      _load();
+/// =========================
+/// STATUS TILE
+/// =========================
+class StatusTile extends StatefulWidget {
+  final String path;
+
+  const StatusTile({super.key, required this.path});
+
+  @override
+  State<StatusTile> createState() => _StatusTileState();
+}
+
+class _StatusTileState extends State<StatusTile> {
+  String? thumb;
+
+  @override
+  void initState() {
+    super.initState();
+    generateThumb();
+  }
+
+  Future<void> generateThumb() async {
+    final temp = await getTemporaryDirectory();
+    final cachePath = "${temp.path}/${widget.path.hashCode}.jpg";
+
+    final file = File(cachePath);
+
+    if (await file.exists()) {
+      setState(() => thumb = cachePath);
+      return;
+    }
+
+    if (widget.path.endsWith(".mp4")) {
+      final generated = await VideoThumbnail.thumbnailFile(
+        video: widget.path,
+        imageFormat: ImageFormat.JPEG,
+        quality: 75,
+      );
+
+      if (generated != null) {
+        await File(generated).copy(cachePath);
+        setState(() => thumb = cachePath);
+      }
+    } else {
+      setState(() => thumb = widget.path);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
-      return Container(color: Colors.grey.shade300);
-    }
-
-    if (thumb == null) {
-      return const Icon(Icons.video_file);
-    }
+    final isVideo = widget.path.endsWith(".mp4");
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.file(
-          File(thumb!),
-          fit: BoxFit.cover,
+        thumb == null
+            ? Container(color: Colors.grey.shade900)
+            : Image.file(File(thumb!), fit: BoxFit.cover),
+
+        if (isVideo)
+          const Center(
+            child: Icon(Icons.play_circle, color: Colors.white, size: 40),
+          ),
+
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [Colors.black87, Colors.transparent],
+            ),
+          ),
         ),
-        Container(color: Colors.black26),
+
         const Center(
-          child: Icon(Icons.play_circle_fill,
-              color: Colors.white, size: 50),
-        ),
+          child: Icon(Icons.download, color: Colors.white),
+        )
       ],
     );
-  }
-
-  Future<void> _load() async {
-    if (_processing.contains(widget.videoPath)) return;
-    _processing.add(widget.videoPath);
-
-    try {
-      final cached = memoryCache.get(widget.videoPath);
-      if (cached != null && await File(cached).exists()) {
-        _set(cached);
-        return;
-      }
-
-      await _generate();
-    } finally {
-      _processing.remove(widget.videoPath);
-    }
-  }
-
-  Future<void> _generate() async {
-    final file = File(widget.videoPath);
-
-    if (!await file.exists()) {
-      _finish(null);
-      return;
-    }
-
-    final cachePath = "${widget.videoPath}.thumb.jpg";
-
-    if (await File(cachePath).exists()) {
-      _set(cachePath);
-      return;
-    }
-
-    try {
-      final path = await VideoThumbnail.thumbnailFile(
-        video: widget.videoPath,
-        imageFormat: ImageFormat.JPEG,
-        quality: 75,
-      );
-
-      if (path == null) {
-        _finish(null);
-        return;
-      }
-
-      await File(path).copy(cachePath);
-      memoryCache.put(widget.videoPath, cachePath);
-      _set(cachePath);
-    } catch (e) {
-      debugPrint("Thumbnail error: $e");
-      _finish(null);
-    }
-  }
-
-  void _set(String path) {
-    if (!mounted) return;
-
-    setState(() {
-      thumb = path;
-      loading = false;
-    });
-  }
-
-  void _finish(String? path) {
-    if (!mounted) return;
-
-    setState(() {
-      thumb = path;
-      loading = false;
-    });
   }
 }
